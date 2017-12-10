@@ -1,33 +1,53 @@
 package main
 
 import (
-    "net"
     "net/http"
-    "fmt"
     "log"
-    "io/ioutil"
+    "io"
 )
 
-func initProxy(proxy *proxy) {
+func (p *proxy) initProxy(proxy *proxy) {
     log.Println("init proxy")
 }
 
-func customRequest(r *http.Request) ([]byte, error) {
-    b := []byte(fmt.Sprintf("GET / HTTP/1.1\r\nHost: mail.ru\r\n\r\n"))
-    return b, nil
+func (p *proxy) customRequest(r *http.Request) ([]byte, error) {
+    return parseEasyHTTPWithHost(r, p.host)
 }
 
-func customResponse(w http.ResponseWriter, connServer net.Conn) (error) {
+func (p *proxy) customResponse(r *http.Request, w http.ResponseWriter, connServer io.Reader) (error) {
     response, err := readEasyHTTP(connServer)
+
+    if p.redirectAccess &&
+        (response.StatusCode == http.StatusMovedPermanently ||
+         response.StatusCode == http.StatusFound) {
+        /* try 1 time */
+        location := response.Header.Get("Location")
+        r.URL, err = r.URL.Parse(location)
+        if err != nil {
+            return err
+        }
+
+        r.Host = r.URL.Host
+
+        bytes, err := parseEasyHTTP(r)
+        if err != nil {
+            return err
+        }
+
+        conn, err := p.connectWithServer(r.Host)
+        if err != nil {
+            return err
+        }
+
+        defer conn.Close()
+
+        conn.Write(bytes)
+        response, err = readEasyHTTP(conn)
+    }
+
     if err != nil {
         return err
     }
 
-    body, err := ioutil.ReadAll(response.Body)
-    if err != nil {
-        return err
-    }
-
-    w.Write(body)
-    return nil
+    return copyEasyHTTP(w, response)
 }
