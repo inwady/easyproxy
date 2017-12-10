@@ -21,6 +21,7 @@ type proxy struct {
     ssl bool
     skipVerify bool
     redirectAccess bool
+    v bool
 }
 
 func (p *proxy) normalizeServer(server string) string {
@@ -58,12 +59,22 @@ func (p *proxy) connect() (net.Conn, error) {
     return p.connectWithServer(p.host)
 }
 
+func (p *proxy) verbose(logInfo interface{}) {
+    if !p.v {
+        return
+    }
+
+    log.Println(logInfo)
+}
+
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     bytesToServer, err := p.customRequest(r)
     if err != nil {
         sendError(w, "bad custom answer")
         return
     }
+
+    p.verbose(string(bytesToServer))
 
     connWithServer, err := p.connect()
     if err != nil {
@@ -91,6 +102,7 @@ func main() {
     ssl := flag.Bool("ssl", false, "ssl connect")
     skip := flag.Bool("k", false, "skip certificate")
     redirect := flag.Bool("r", false, "redirect access")
+    verbose := flag.Bool("v", false, "verbose")
     flag.Parse()
 
     if *server == "" {
@@ -110,6 +122,7 @@ func main() {
         ssl: *ssl,
         skipVerify: *skip,
         redirectAccess: *redirect,
+        v: *verbose,
     }
 
     proxyServer.initProxy(proxyServer)
